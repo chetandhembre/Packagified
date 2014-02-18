@@ -1,0 +1,14 @@
+{
+  "name": "RelaventPackage(backend)",
+  "version": "0.0.1",
+  "description": "Find relavent node.js package",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "chetandhembre@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "request": "~2.33.0"
+  }
+}
