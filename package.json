@@ -9,6 +9,8 @@
   "author": "chetandhembre@gmail.com",
   "license": "MIT",
   "dependencies": {
-    "request": "~2.33.0"
+    "request": "~2.33.0",
+    "mysql": "~2.1.0",
+    "nano": "^4.6.1"
   }
 }
