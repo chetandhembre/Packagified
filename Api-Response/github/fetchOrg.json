@@ -1,0 +1,23 @@
+{ 
+    "login": "npm",
+    "id": 6078720,
+    "url": "https://api.github.com/orgs/npm",
+    "repos_url": "https://api.github.com/orgs/npm/repos",
+    "events_url": "https://api.github.com/orgs/npm/events",
+    "members_url": "https://api.github.com/orgs/npm/members{/member}",
+    "public_members_url": "https://api.github.com/orgs/npm/public_members{/member}",
+    "avatar_url": "https://gravatar.com/avatar/46d8d00e190be647053f7d97fd0478e4?d=https%3A%2F%2Fidenticons.github.com%2F934564d9260085460bcd26a837fac0bd.png&r=x",
+    "name": "npm",
+    "company": null,
+    "blog": "https://npmjs.org",
+    "location": "earth",
+    "email": "npm@npmjs.com",
+    "public_repos": 22,
+    "public_gists": 0,
+    "followers": 0,
+    "following": 0,
+    "html_url": "https://github.com/npm",
+    "created_at": "2013-12-01T14:43:53Z",
+    "updated_at": "2014-02-25T02:45:54Z",
+    "type": "Organization" 
+}
