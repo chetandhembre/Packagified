@@ -1,0 +1,1222 @@
+{
+    "_attachments" : {},
+    "_id" : "st",
+    "_rev" : "91-768b37c3694dec6cf03ff7c68488a8b9",
+    "author" : { "email" : "i@izs.me",
+        "name" : "Isaac Z. Schlueter",
+        "url" : "http://blog.izs.me/"
+    },
+    "description" : "A module for serving static files.  Does etags, caching, etc.",
+    "dist-tags" : { "latest" : "0.3.1" },
+    "maintainers" : [ { "email" : "i@izs.me",
+        "name" : "isaacs"
+    },
+        { "email" : "rod@vagg.org",
+            "name" : "rvagg"
+        }
+    ],
+    "name" : "st",
+    "readme" : "# st\n\nA module for serving static files.  Does etags, caching, etc.\n\n## USAGE\n\nHere are some very simple usage examples.\n\nJust serve the files in the cwd at the root of the http server url:\n\n```javascript\nvar st = require('st')\nvar http = require('http')\n\nhttp.createServer(\n  st(process.cwd())\n).listen(1337)\n```\n\n\nServe the files in static under the /static url.  Otherwise do a\ndifferent thing:\n\n```javascript\nvar mount = st({ path: __dirname + '/static', url: '/static' })\nhttp.createServer(function(req, res) {\n  var stHandled = mount(req, res);\n  if (stHandled)\n    return\n  else\n    res.end('this is not a static file')\n}).listen(1338)\n```\n\nThe same sort of thing, but using an express middleware style:\n\n```javascript\nvar mount = st({ path: __dirname + '/static', url: '/static' })\nhttp.createServer(function(req, res) {\n  mount(req, res, function() {\n    res.end('this is not a static file')\n  })\n}).listen(1339)\n```\n\n\nServe the files in static under the / url, but only if not some doing\nother thing:\n\n```javascript\nvar mount = st({ path: __dirname + '/static', url: '/' })\nhttp.createServer(function(req, res) {\n  if (shouldDoThing(req)) {\n    doTheThing(req, res)\n  } else {\n    mount(req, res)\n  }\n}).listen(1340)\n```\n\nServe the files in static under the / url, but don't serve a 404 if\nthe file isn't found, so that the rest of the app can handle it:\n\n```javascript\nvar mount = st({ path: __dirname + '/static', url: '/', passthrough: true })\nhttp.createServer(function(req, res) {\n  mount(req, res, function() {\n    res.end('this is not a static file');\n  });\n}).listen(1341);\n```\n\n\nPass some options to the `st` function, and it returns a handler\nfunction.\n\nThat handler function will return `true` if it handles the static\nrequest, or `false` if it doesn't.  (This is so that you can only\nserve static files if they're in `/static` for example.)\n\nHere are some options if you want to configure stuff.  All of these\nare optional except `path` which tells it where to get stuff from.\n\nIf you pass a string instead of an object, then it'll use the string\nas the path.\n\nIf you don't specify a `url`, then it'll mount on the `'/'` url, so\n`st({ path: './static/' })` will try to serve `./static/foo.html` when\nthe user goes to `http://example.com/foo.html`.  (Note: This behavior\nchanged in st 0.2.0.)\n\nHere are all the options described with their defaults values and a\nfew possible settings you might choose to use:\n\n```javascript\nvar st = require('st')\nvar mount = st({\n  path: 'resources/static/', // resolved against the process cwd\n  url: 'static/', // defaults to '/'\n\n  cache: { // specify cache:false to turn off caching entirely\n    fd: {\n      max: 1000, // number of fd's to hang on to\n      maxAge: 1000*60*60, // amount of ms before fd's expire\n    },\n\n    stat: {\n      max: 5000, // number of stat objects to hang on to\n      maxAge: 1000 * 60, // number of ms that stats are good for\n    },\n\n    content: {\n      max: 1024*1024*64, // how much memory to use on caching contents\n      maxAge: 1000 * 60 * 10, // how long to cache contents for\n    },\n\n    index: { // irrelevant if not using index:true\n      max: 1024 * 8, // how many bytes of autoindex html to cache\n      maxAge: 1000 * 60 * 10, // how long to store it for\n    },\n\n    readdir: { // irrelevant if not using index:true\n      max: 1000, // how many dir entries to cache\n      maxAge: 1000 * 60 * 10, // how long to cache them for\n    }\n  },\n\n  // indexing options\n  index: true, // auto-index, the default\n  index: 'index.html', // use 'index.html' file as the index\n  index: false, // return 404's for directories\n\n  dot: false, // default: return 403 for any url with a dot-file part\n  dot: true, // allow dot-files to be fetched normally\n\n  passthrough: true, // calls next/returns instead of returning a 404 error\n  passthrough: false, // returns a 404 when a file or an index is not found\n})\n\n// with bare node.js\nhttp.createServer(function (req, res) {\n  if (mount(req, res)) return // serving a static file\n  myCustomLogic(req, res)\n}).listen(PORT)\n\n// with express\napp.use(mount)\n// or\napp.route('/static/:fooblz', function (req, res, next) {\n  mount(req, res, next) // will call next() if it doesn't do anything\n})\n```\n\nOn the command line:\n\n```\n$ st -h\nst\nStatic file server in node\n\nOptions:\n\n-h --help             Show this help\n\n-p --port PORT        Listen on PORT (default=1337)\n\n-d --dir DIRECTORY    Serve the contents of DIRECTORY (default=cwd)\n\n-i --index [INDEX]    Use the specified INDEX filename as the result\n                      when a directory is requested.  Set to \"true\"\n                      to turn autoindexing on, or \"false\" to turn it\n                      off.  If no INDEX is provided, then it will turn\n                      autoindexing on.  (default=true)\n\n-ni --no-index        Same as \"--index false\"\n\n-. --dot [DOT]        Allow .files to be served.  Set to \"false\" to\n                      disable.\n\n-n. --no-dot          Same as \"--dot false\"\n\n-nc --no-cache        Turn off all caching.\n\n-a --age AGE          Max age (in ms) of cache entries.\n```\n\n## Range Requests\n\nRange requests are not supported.\n\nI'd love a patch to add support for them, but the spec is kind of\nconfusing, and it's not always a clear win if you're not serving very\nlarge files, so it should come with some very comprehensive tests.\n\nThankfully, as far as I can tell, it's always safe to serve the entire\nfile to a request with a range header, so st does behave correctly, if\nnot ideally in those situations.  It'd be great to be able to do the\nbetter thing if the contents are cached, but still serve the full file\nif it's not in cache (so that it can be cached for subsequent\nrequests).\n\n## Memory Caching\n\nTo make things go as fast as possible, it is a good idea to set the\ncache limits as high as you can afford, given the amount of memory on\nyour server.  Serving buffers out of process memory will generally\nalways be faster than hitting the file system.\n\n## Client Caching\n\nAn etag header and last-modified will be attached to every request.\nIf presented with an `if-none-match` or `if-modified-since`, then\nit'll return a 304 in the appropriate conditions.\n\nThe etag is generated based on the dev, ino, and last modified date.\nStat results are cached.\n\n## Compression\n\nIf the request header claims to enjoy gzip encoding, and the filename\ndoes not end in '.gz' or '.tgz', then the response will be gzipped.\n\nGzipped bytes are not included in the calculation of cache sizes, so\nthis utility will use a bit more memory than the cache.content.max and\ncache.index.max bytes would seem to allow.  This will be less than\ndouble, and usually insignificant for normal web assets, but is\nimportant to consider if memory is at a premium.\n\n## Filtering Output\n\nIf you want to do some fancy stuff to the file before sending it, you\ncan attach a `res.filter = myFilterStream` thing to the response\nobject before passing it to the mount function.\n\nThis is useful if you want to get the benefits of caching and gzipping\nand such, but serve stylus files as css, for example.\n\n## Security Status\n\nVersions prior to 0.2.5 did not properly prevent folder traversal.\nLiteral dots in a path were resolved out, but url encoded dots were\nnot.  Thus, a request like\n`/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd` would leak sensitive\ndata from the server.\n\nAs of version 0.2.5, any `'/../'` in the request path, urlencoded or\nnot, will be replaced with `'/'`.  If your application depends on url\ntraversal, then you are encouraged to please refactor so that you do\nnot depend on having `..` in url paths, as this tends to expose data\nthat you may be surprised to be exposing.\n",
+    "readmeFilename" : "README.md",
+    "repository" : { "type" : "git",
+        "url" : "git://github.com/isaacs/st"
+    },
+    "time" : { "0.0.1" : "2012-08-10T06:15:42.487Z",
+        "0.0.10" : "2012-10-22T16:13:43.880Z",
+        "0.0.11" : "2012-10-26T17:19:35.530Z",
+        "0.0.12" : "2012-11-08T23:35:40.796Z",
+        "0.0.2" : "2012-08-11T00:55:29.298Z",
+        "0.0.3" : "2012-08-11T02:20:53.330Z",
+        "0.0.4" : "2012-08-11T02:45:48.258Z",
+        "0.0.5" : "2012-08-21T16:37:39.527Z",
+        "0.0.6" : "2012-09-17T03:59:25.183Z",
+        "0.0.7" : "2012-09-20T16:00:13.335Z",
+        "0.0.8" : "2012-10-16T18:18:29.044Z",
+        "0.0.9" : "2012-10-16T18:19:12.407Z",
+        "0.1.0" : "2012-11-16T07:53:45.186Z",
+        "0.1.1" : "2012-12-06T23:44:06.352Z",
+        "0.1.2" : "2013-01-10T01:49:47.573Z",
+        "0.1.3" : "2013-04-06T22:42:49.803Z",
+        "0.1.4" : "2013-05-29T02:16:49.524Z",
+        "0.2.0" : "2013-06-18T21:00:18.578Z",
+        "0.2.1" : "2013-06-20T01:18:17.324Z",
+        "0.2.2" : "2013-11-18T23:15:10.185Z",
+        "0.2.3" : "2013-11-18T23:22:50.464Z",
+        "0.2.4" : "2014-02-04T01:27:47.825Z",
+        "0.2.5" : "2014-02-06T19:56:22.305Z",
+        "0.2.6" : "2014-02-10T22:27:18.822Z",
+        "0.3.0" : "2014-02-16T23:10:01.049Z",
+        "0.3.1" : "2014-02-18T15:17:40.785Z",
+        "created" : "2012-08-10T06:15:40.860Z",
+        "modified" : "2014-02-18T15:17:40.785Z"
+    },
+    "users" : { "bahamas10" : true,
+        "conradz" : true,
+        "dubban" : true,
+        "joeybaker" : true,
+        "luk" : true,
+        "michaelnisi" : true,
+        "tcrowe" : true
+    },
+    "versions" : { "0.0.1" : { "_id" : "st@0.0.1",
+        "author" : { "email" : "i@izs.me",
+            "name" : "Isaac Z. Schlueter",
+            "url" : "http://blog.izs.me/"
+        },
+        "dependencies" : { "lru-cache" : "~2.0.0",
+            "mime" : "~1.2.7",
+            "negotiator" : "~0.2.3"
+        },
+        "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+        "description" : "A module for serving static files.  Does etags, caching, etc.",
+        "devDependencies" : {  },
+        "directories" : {  },
+        "dist" : { "shasum" : "9401b5354f70e821f1b63c8766d7a61c857d5cd1",
+            "tarball" : "http://registry.npmjs.org/st/-/st-0.0.1.tgz"
+        },
+        "keywords" : [ "static",
+            "file",
+            "serve",
+            "etag",
+            "autoindex",
+            "cache"
+        ],
+        "license" : "BSD",
+        "main" : "st.js",
+        "maintainers" : [ { "email" : "i@izs.me",
+            "name" : "isaacs"
+        } ],
+        "name" : "st",
+        "repository" : { "type" : "git",
+            "url" : "git://github.com/isaacs/st"
+        },
+        "scripts" : { "test" : "tap test/*.js" },
+        "version" : "0.0.1"
+    },
+        "0.0.10" : { "_id" : "st@0.0.10",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.63",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "0c6f786b03f938ffb56080463ce1501c45e111f7",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.10.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.10"
+        },
+        "0.0.11" : { "_id" : "st@0.0.11",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.65",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "7dc1e5b2e087250c092f03a46b2e4436feb27784",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.11.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.11"
+        },
+        "0.0.12" : { "_id" : "st@0.0.12",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.65",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "8f30b748e883d9276206523c08e8ca9bc623938c",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.12.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.12"
+        },
+        "0.0.2" : { "_id" : "st@0.0.2",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.3"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : {  },
+            "directories" : {  },
+            "dist" : { "shasum" : "1beeed3c33d7812479fe111b437a86038fac4311",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.2.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.2"
+        },
+        "0.0.3" : { "_id" : "st@0.0.3",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.3"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : {  },
+            "directories" : {  },
+            "dist" : { "shasum" : "19a24892695c52a4459118698c74dbeb3fc2cbac",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.3.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.3"
+        },
+        "0.0.4" : { "_id" : "st@0.0.4",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.3"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : {  },
+            "directories" : {  },
+            "dist" : { "shasum" : "acb9399831a7143ad486b72117f242ee85381096",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.4.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.4"
+        },
+        "0.0.5" : { "_id" : "st@0.0.5",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.54",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : {  },
+            "directories" : {  },
+            "dist" : { "shasum" : "99fb805bcb88659496844e306abea2b4e6db1d4a",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.5.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.5"
+        },
+        "0.0.6" : { "_id" : "st@0.0.6",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.61",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : {  },
+            "directories" : {  },
+            "dist" : { "shasum" : "60080c414c07468db2dd43cc0b35b12755c8e136",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.6.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.6"
+        },
+        "0.0.7" : { "_id" : "st@0.0.7",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.61",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "246df4ffdd13ee51172873081ecbee270dd9bdbb",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.7.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.7"
+        },
+        "0.0.8" : { "_id" : "st@0.0.8",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.63",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "df1c63a40fb9afb30c769d90d4739771a6198a1c",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.8.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.8"
+        },
+        "0.0.9" : { "_id" : "st@0.0.9",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.63",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "cc811b328c9eae807fe43586226b1c3183871618",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.0.9.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.0.9"
+        },
+        "0.1.0" : { "_id" : "st@0.1.0",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.65",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "2b6dba7956778b74b28b3c87d203c72e9a55c893",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.1.0.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.1.0"
+        },
+        "0.1.1" : { "_id" : "st@0.1.1",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.1.68",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "711d6853dd42fbed5e4c720da59f154f04b3bd4b",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.1.1.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.1.1"
+        },
+        "0.1.2" : { "_id" : "st@0.1.2",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.2.0",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.0.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.1.13",
+                "lru-cache" : "~2.0.0",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "0397f0d1236bf49d4355996bacf54b9469ceca86",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.1.2.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.1.13" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.1.2"
+        },
+        "0.1.3" : { "_from" : ".",
+            "_id" : "st@0.1.3",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.2.17",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "cb6fae1da5944eda06fd8b03d49290e78f1c4184",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.1.3.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.1.3"
+        },
+        "0.1.4" : { "_from" : ".",
+            "_id" : "st@0.1.4",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.2.23",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "8be55217f9c300e31ef8b3c5095c60fb51aa9af7",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.1.4.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.1.4"
+        },
+        "0.2.0" : { "_from" : ".",
+            "_id" : "st@0.2.0",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.2.32",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "143b654cc2366a500a8bac70d013761108d462f2",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.0.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.0"
+        },
+        "0.2.1" : { "_from" : ".",
+            "_id" : "st@0.2.1",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.2.32",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "89204f8e6d5cd85a81763dc42627feec0bba26eb",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.1.tgz"
+            },
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.1"
+        },
+        "0.2.2" : { "_from" : ".",
+            "_id" : "st@0.2.2",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.3.14",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "1c19c306ccae3beaff4a09f4c2780617fbbdfb93",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.2.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.2"
+        },
+        "0.2.3" : { "_from" : ".",
+            "_id" : "st@0.2.3",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.3.14",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "36d6ff5ebbd0c033e22c7efa3fd80a84b46b9dce",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.3.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+                { "email" : "rod@vagg.org",
+                    "name" : "rvagg"
+                }
+            ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.3"
+        },
+        "0.2.4" : { "_from" : ".",
+            "_id" : "st@0.2.4",
+            "_npmUser" : { "email" : "rod@vagg.org",
+                "name" : "rvagg"
+            },
+            "_npmVersion" : "1.3.24",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "deprecated" : "Please upgrade to at least 0.2.5 for a security fix",
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "97318f55485ffcbe7086e22b40d61758923cffa0",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.4.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "rod@vagg.org",
+                "name" : "rvagg"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.4"
+        },
+        "0.2.5" : { "_from" : ".",
+            "_id" : "st@0.2.5",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.3.26",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "1e4167fa5dbd72fe6c97fcb0d39f65281af4e38a",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.5.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            } ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.5"
+        },
+        "0.2.6" : { "_from" : ".",
+            "_id" : "st@0.2.6",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.3.26",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "b78bb5d647e456abd4c122d3ac699dacc8bba3f9",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.2.6.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+                { "email" : "rod@vagg.org",
+                    "name" : "rvagg"
+                }
+            ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.2.6"
+        },
+        "0.3.0" : { "_from" : ".",
+            "_id" : "st@0.3.0",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.4.2",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "e6bfff5278e90bc3449e264e2ad5c8f05d083300",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.3.0.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+                { "email" : "rod@vagg.org",
+                    "name" : "rvagg"
+                }
+            ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.3.0"
+        },
+        "0.3.1" : { "_from" : ".",
+            "_id" : "st@0.3.1",
+            "_npmUser" : { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+            "_npmVersion" : "1.4.3",
+            "author" : { "email" : "i@izs.me",
+                "name" : "Isaac Z. Schlueter",
+                "url" : "http://blog.izs.me/"
+            },
+            "bin" : { "st" : "bin/server.js" },
+            "bugs" : { "url" : "https://github.com/isaacs/st/issues" },
+            "dependencies" : { "async-cache" : "~0.1.2",
+                "fd" : "~0.0.2",
+                "graceful-fs" : "~1.2",
+                "mime" : "~1.2.7",
+                "negotiator" : "~0.2.5"
+            },
+            "description" : "A module for serving static files.  Does etags, caching, etc.",
+            "devDependencies" : { "request" : "~2.11.4",
+                "tap" : "~0.3.1"
+            },
+            "directories" : {  },
+            "dist" : { "shasum" : "9ed666451284a39e3cf59766312e1904e1eb64d9",
+                "tarball" : "http://registry.npmjs.org/st/-/st-0.3.1.tgz"
+            },
+            "homepage" : "https://github.com/isaacs/st",
+            "keywords" : [ "static",
+                "file",
+                "serve",
+                "etag",
+                "autoindex",
+                "cache"
+            ],
+            "license" : "BSD",
+            "main" : "st.js",
+            "maintainers" : [ { "email" : "i@izs.me",
+                "name" : "isaacs"
+            },
+                { "email" : "rod@vagg.org",
+                    "name" : "rvagg"
+                }
+            ],
+            "name" : "st",
+            "optionalDependencies" : { "graceful-fs" : "~1.2" },
+            "repository" : { "type" : "git",
+                "url" : "git://github.com/isaacs/st"
+            },
+            "scripts" : { "test" : "tap test/*.js" },
+            "version" : "0.3.1"
+        }
+    }
+}
