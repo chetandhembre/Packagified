@@ -4,17 +4,23 @@
   "description": "Find relavent node.js package",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "clear && grunt mochaTest"
   },
   "author": "chetandhembre@gmail.com",
   "license": "MIT",
   "dependencies": {
-    "request": "~2.33.0",
+    "async": "^0.2.10",
+    "conflate": "^1.1.0",
+    "lodash": "^2.4.1",
     "mysql": "~2.1.0",
     "nano": "^4.6.1",
+    "request": "~2.33.0",
     "sf": "^0.1.7",
-    "conflate": "^1.1.0",
-    "async": "^0.2.10",
     "underscore": "^1.6.0"
+  },
+  "devDependencies": {
+    "grunt": "^0.4.5",
+    "grunt-mocha-test": "^0.11.0",
+    "should": "^4.0.4"
   }
 }
