@@ -1,4 +1,4 @@
 Packagified
 ===========
 
-I do not where it gonna end
+I do not know where it gonna end
